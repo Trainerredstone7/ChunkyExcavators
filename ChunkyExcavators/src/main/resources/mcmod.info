@@ -1,0 +1,16 @@
+[
+{
+  "modid": "chunkyexcavators",
+  "name": "Chunky Excavators",
+  "description": "Adds a one-per-chunk restriction to Immersive Engineering excavators.",
+  "version": "${version}",
+  "mcversion": "${mcversion}",
+  "url": "",
+  "updateUrl": "",
+  "authorList": ["TrainerRedstone7"],
+  "credits": "",
+  "logoFile": "",
+  "screenshots": [],
+  "dependencies": [immersiveengineering]
+}
+]
