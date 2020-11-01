@@ -30,9 +30,11 @@ import blusunrize.immersiveengineering.common.util.Utils;
 @Mod.EventBusSubscriber
 public class ChunkyExcavators
 {
-    public static final String MODID = "chunkyexcavators";
+	public static final String MODID = "chunkyexcavators";
     public static final String NAME = "Chunky Excavators";
-    public static final String VERSION = "0.1";
+    public static final String VERSION = "0.5";
+    public static final int EXCAVATOR_WHEEL_CENTER_POS = 31;
+	public static final int WHEEL_CENTER_POS = 24;
 
     private static Logger logger;
 
@@ -49,35 +51,20 @@ public class ChunkyExcavators
 //        logger.info("DIRT BLOCK >> {}", Blocks.DIRT.getRegistryName());
     }
     
+    /**
+     * Checks if there's already another excavator in the chunk the new excavator will mine from,
+     * and if so cancels the formation event.
+     */
     @SubscribeEvent
-    public static void checkForExcavators(MultiblockFormEvent.Post event) {
-    	logger.info("called!");
-    	/*
-    	 * TODO: Use chunk heightmap to reduce number of blocks that need to be checked
-    	 * TODO: Dissassemble attached excavator if the full multiblock can't form
-    	 */
+    public static void excavatorRestrictionCheck(MultiblockFormEvent.Post event) {
     	String multiblockType = event.getMultiblock().getUniqueName();
     	logger.info("multiblock name is " + multiblockType);
     	if (multiblockType == "IE:Excavator") {
     		logger.info("excavator code block");
     		/*
-    		 * Why dissassemble adjacent bucketwheels?
-    		 * 
-    		 * The check for already existing excavators is only performed on bucketwheel multiblock formation.
-    		 * This is because it's difficult to get the chunk an excavator will mine from the excavator itself,
-    		 * as the chunk is determined by the wheel position and you can't get excavator orientation information
-    		 * from the assembly event. By dissassembling the wheel if it already exists, we can check for existing
-    		 * excavators during wheel multiblock assembly which is begun upon successful excavator multiblock assembly.
-    		 * Otherwise, a player could build several wheels which wouldn't be detected by the checking algorithm,
-    		 * then build the excavators around them.
+    		 * Check for excavators in chunks occupied by adjacent bucketwheels, and cancel formation
+    		 * if one is found
     		 */
-    		
-    		/*
-    		 * Idea: just check for excavators in all chunks occupied by adjacent bucketwheels - it will only
-    		 * happen more than once in very unusual circumstances and in those cases the players are probably
-    		 * trying to game the system anyways
-    		 */
-    		
     		World world = event.getEntityPlayer().getEntityWorld();
     		BlockPos excavatorPos = event.getClickedBlock();
     		TileEntity[] tes = {world.getTileEntity(excavatorPos.north()),
@@ -86,37 +73,56 @@ public class ChunkyExcavators
     						    world.getTileEntity(excavatorPos.west())};
     		for (TileEntity te : tes) {
     			if (te instanceof TileEntityBucketWheel) {
-    				//This seems to mess up the center block of the wheel
-    				((TileEntityBucketWheel) te).master().disassemble();
-        			logger.info("disassembled!");
-    			}
-    		}
-    	}
-    	if (multiblockType == "IE:BucketWheel") {
-    		Chunk excavatorChunk = event.getEntityPlayer().getEntityWorld().getChunkFromBlockCoords(event.getClickedBlock());
-    		BlockPos chunkCorner = getChunkCornerPos(event.getClickedBlock());
-    		World world = event.getEntityPlayer().getEntityWorld();
-    		for (int x = 0; x < positionCheckKey.length; x++) {
-    			for (int z = 0; z < positionCheckKey[x].length; z++) {
-    				if (positionCheckKey[x][z] == 0) continue;
-    				//subtract 1 from starting y value because lowest block is at y = 0
-    				for (int y = positionCheckKey[x][z] - 1; y < 256; y += positionCheckKey[x][z]) {
-    					TileEntity te = world.getTileEntity(chunkCorner.add(x, y, z));
-    					logger.info("checked coordinate " + (chunkCorner.getX() + x) + " " + (chunkCorner.getY() + y) + " " + (chunkCorner.getZ() + z) + " ");
-    					if (minesFromChunk(te, excavatorChunk) && !sameExcavator(te, event.getClickedBlock())) {
-    						logger.info("found excavator");
-    						//prevent bucketwheel formation since there's already an excavator in the chunk
-    						event.setCanceled(true);
-    						if (!world.isRemote) {
-    							event.getEntityPlayer().sendMessage(new TextComponentString("There is already an excavator in this chunk!"));
-    						}
-    						return;
-    					}
+    				BlockPos wheelPos = ((TileEntityBucketWheel) te).getBlockPosForPos(WHEEL_CENTER_POS);
+    				if (checkForOtherExcavators(wheelPos, world)) {
+    					cancelFormation(event);
+    					return;
     				}
     			}
     		}
     	}
+    	if (multiblockType == "IE:BucketWheel") {
+    		World world = event.getEntityPlayer().getEntityWorld();
+    		if (checkForOtherExcavators(event.getClickedBlock(), world)) {
+				cancelFormation(event);
+				return;
+    		}
+    	}
     }
+
+	private static void cancelFormation(MultiblockFormEvent.Post event) {
+		logger.info("found excavator");
+		event.setCanceled(true);
+		if (!event.getEntityPlayer().getEntityWorld().isRemote) {
+			event.getEntityPlayer().sendMessage(new TextComponentString("There is already an excavator in this chunk!"));
+		}
+	}
+    
+    /**
+     * Checks for other excavators in the chunk, excluding ones with bucket wheels centered on the 
+     * provided BlockPos.
+     * 
+     * TODO: Use chunk heightmap to reduce number of blocks that need to be checked
+     */
+    private static boolean checkForOtherExcavators(BlockPos wheelPos, World world) {
+    	Chunk chunk = world.getChunkFromBlockCoords(wheelPos);
+    	BlockPos chunkCorner = new BlockPos(chunk.x*16, 0, chunk.z*16);
+		for (int x = 0; x < positionCheckKey.length; x++) {
+			for (int z = 0; z < positionCheckKey[x].length; z++) {
+				if (positionCheckKey[x][z] == 0) continue;
+				//subtract 1 from starting y value because lowest block is at y = 0
+				for (int y = positionCheckKey[x][z] - 1; y < 256; y += positionCheckKey[x][z]) {
+					TileEntity te = world.getTileEntity(chunkCorner.add(x, y, z));
+					logger.info("checked coordinate " + (chunkCorner.getX() + x) + " " + (chunkCorner.getY() + y) + " " + (chunkCorner.getZ() + z) + " ");
+					if (minesFromChunk(te, chunk) && !sameExcavator(te, wheelPos)) {
+						return true;
+					}
+				}
+			}
+		}
+    	return false;
+    }
+    
     private static boolean minesFromChunk(TileEntity te, Chunk chunk) {
     	if (te instanceof TileEntityExcavator) return minesFromChunk((TileEntityExcavator) te, chunk);
     	if (te instanceof TileEntityBucketWheel) return minesFromChunk((TileEntityBucketWheel) te, chunk);
@@ -124,13 +130,12 @@ public class ChunkyExcavators
     }
     
 	private static boolean minesFromChunk(TileEntityExcavator te, Chunk chunk) {
-	    //TODO verify this works
-		BlockPos wheelCenter = te.getBlockPosForPos(31);
+		BlockPos wheelCenter = te.getBlockPosForPos(EXCAVATOR_WHEEL_CENTER_POS);
     	return wheelCenter.getX() >> 4 == chunk.x && wheelCenter.getZ() >> 4 == chunk.z; //bitshift to always round negative
     }
 	
     private static boolean minesFromChunk(TileEntityBucketWheel te, Chunk chunk) {
-    	BlockPos wheelCenter = te.getOrigin();
+    	BlockPos wheelCenter = te.getBlockPosForPos(WHEEL_CENTER_POS);
     	return wheelCenter.getX() >> 4 == chunk.x && wheelCenter.getZ() >> 4 == chunk.z;
 	}
     
@@ -148,18 +153,14 @@ public class ChunkyExcavators
     }
     
     private static boolean sameExcavator(TileEntityExcavator te, BlockPos blockPos) {
-    	return te.getBlockPosForPos(31).equals(blockPos); //get excavator wheel center and compare positions
+    	logger.info("excavator " + te.getBlockPosForPos(EXCAVATOR_WHEEL_CENTER_POS) + " clicked block: " + blockPos);
+    	return te.getBlockPosForPos(EXCAVATOR_WHEEL_CENTER_POS).equals(blockPos); //get excavator wheel center and compare positions
     }
 
     private static boolean sameExcavator(TileEntityBucketWheel te, BlockPos blockPos) {
-    	return te.getOrigin().equals(blockPos);
-    }
-    
-    /**
-     * Gives the corner of the chunk containing the BlockPos with minimum x, y, and z coordinates.
-     */
-    private static BlockPos getChunkCornerPos(BlockPos pos) {
-    	return new BlockPos(pos.getX() - Math.floorMod(pos.getX(), 16), 0, pos.getZ() - Math.floorMod(pos.getZ(), 16));
+    	logger.info(te.getPos());
+    	logger.info("bucket wheel " + te.getBlockPosForPos(WHEEL_CENTER_POS) + " clicked block: " + blockPos);
+    	return te.getBlockPosForPos(WHEEL_CENTER_POS).equals(blockPos);
     }
     
     /*
