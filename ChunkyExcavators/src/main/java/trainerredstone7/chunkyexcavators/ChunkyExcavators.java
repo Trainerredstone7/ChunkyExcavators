@@ -21,7 +21,7 @@ public class ChunkyExcavators
 {
 	public static final String MODID = "chunkyexcavators";
     public static final String NAME = "Chunky Excavators";
-    public static final String VERSION = "0.6";
+    public static final String VERSION = "0.7";
     public static final int EXCAVATOR_WHEEL_CENTER_POS = 31;
 	public static final int WHEEL_CENTER_POS = 24;
 	
@@ -121,7 +121,7 @@ public class ChunkyExcavators
     }
 	
     private static boolean minesFromChunk(TileEntityBucketWheel te, Chunk chunk) {
-    	BlockPos wheelCenter = te.getBlockPosForPos(WHEEL_CENTER_POS);
+    	BlockPos wheelCenter = te.getPos().add(-te.offset[0], -te.offset[1], -te.offset[2]);
 		logger.info("minesFromChunk wheel wheelpos: " + wheelCenter);
     	return wheelCenter.getX() >> 4 == chunk.x && wheelCenter.getZ() >> 4 == chunk.z;
 	}
@@ -142,8 +142,8 @@ public class ChunkyExcavators
 
     private static boolean sameExcavator(TileEntityBucketWheel te, BlockPos wheelPos) {
     	logger.info(te.getPos());
-    	logger.info("bucket wheel " + te.getBlockPosForPos(WHEEL_CENTER_POS) + " clicked block: " + wheelPos);
-    	return te.getBlockPosForPos(WHEEL_CENTER_POS).equals(wheelPos);
+    	logger.info("bucket wheel " + te.getPos().add(-te.offset[0], -te.offset[1], -te.offset[2]) + " clicked block: " + wheelPos);
+    	return te.getPos().add(-te.offset[0], -te.offset[1], -te.offset[2]).equals(wheelPos);
     }
     
     /*
