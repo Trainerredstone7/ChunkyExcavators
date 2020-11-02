@@ -1,30 +1,19 @@
 package trainerredstone7.chunkyexcavators;
 
-import net.minecraft.block.Block;
-import net.minecraft.init.Blocks;
+import org.apache.logging.log4j.Logger;
+
+import blusunrize.immersiveengineering.api.MultiblockHandler.MultiblockFormEvent;
+import blusunrize.immersiveengineering.common.blocks.metal.TileEntityBucketWheel;
+import blusunrize.immersiveengineering.common.blocks.metal.TileEntityExcavator;
 import net.minecraft.tileentity.TileEntity;
-import net.minecraft.util.EnumFacing;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.text.TextComponentString;
 import net.minecraft.world.World;
 import net.minecraft.world.chunk.Chunk;
 import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.common.Mod.EventHandler;
-import net.minecraftforge.fml.common.event.FMLInitializationEvent;
 import net.minecraftforge.fml.common.event.FMLPreInitializationEvent;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
-
-import org.apache.logging.log4j.Logger;
-
-import blusunrize.immersiveengineering.ImmersiveEngineering;
-import blusunrize.immersiveengineering.api.MultiblockHandler.IMultiblock;
-import blusunrize.immersiveengineering.api.MultiblockHandler.MultiblockFormEvent;
-import blusunrize.immersiveengineering.common.IEContent;
-import blusunrize.immersiveengineering.common.blocks.metal.BlockTypes_MetalDecoration0;
-import blusunrize.immersiveengineering.common.blocks.metal.TileEntityBucketWheel;
-import blusunrize.immersiveengineering.common.blocks.metal.TileEntityExcavator;
-import blusunrize.immersiveengineering.common.blocks.multiblocks.MultiblockExcavator;
-import blusunrize.immersiveengineering.common.util.Utils;
 
 @Mod(modid = ChunkyExcavators.MODID, name = ChunkyExcavators.NAME, version = ChunkyExcavators.VERSION)
 @Mod.EventBusSubscriber
@@ -32,23 +21,16 @@ public class ChunkyExcavators
 {
 	public static final String MODID = "chunkyexcavators";
     public static final String NAME = "Chunky Excavators";
-    public static final String VERSION = "0.5";
+    public static final String VERSION = "0.6";
     public static final int EXCAVATOR_WHEEL_CENTER_POS = 31;
 	public static final int WHEEL_CENTER_POS = 24;
-
+	
     private static Logger logger;
 
     @EventHandler
     public void preInit(FMLPreInitializationEvent event)
     {
         logger = event.getModLog();
-    }
-
-    @EventHandler
-    public void init(FMLInitializationEvent event)
-    {
-        // some example code
-//        logger.info("DIRT BLOCK >> {}", Blocks.DIRT.getRegistryName());
     }
     
     /**
@@ -102,16 +84,19 @@ public class ChunkyExcavators
      * Checks for other excavators in the chunk, excluding ones with bucket wheels centered on the 
      * provided BlockPos.
      * 
-     * TODO: Use chunk heightmap to reduce number of blocks that need to be checked
+     * TODO: Ignore excavators that are partially in the chunk but mine from a different chunk (currently not working correctly? (maybe))
      */
     private static boolean checkForOtherExcavators(BlockPos wheelPos, World world) {
     	Chunk chunk = world.getChunkFromBlockCoords(wheelPos);
     	BlockPos chunkCorner = new BlockPos(chunk.x*16, 0, chunk.z*16);
+    	logger.info(chunk.getPrecipitationHeight(chunkCorner));
 		for (int x = 0; x < positionCheckKey.length; x++) {
 			for (int z = 0; z < positionCheckKey[x].length; z++) {
 				if (positionCheckKey[x][z] == 0) continue;
+				//Positions above precipitation heightmap don't need to be checked (they can't have solid blocks)
+				int maxHeight = chunk.getPrecipitationHeight(new BlockPos(x, 0, z)).getY();
 				//subtract 1 from starting y value because lowest block is at y = 0
-				for (int y = positionCheckKey[x][z] - 1; y < 256; y += positionCheckKey[x][z]) {
+				for (int y = positionCheckKey[x][z] - 1; y < maxHeight; y += positionCheckKey[x][z]) {
 					TileEntity te = world.getTileEntity(chunkCorner.add(x, y, z));
 					logger.info("checked coordinate " + (chunkCorner.getX() + x) + " " + (chunkCorner.getY() + y) + " " + (chunkCorner.getZ() + z) + " ");
 					if (minesFromChunk(te, chunk) && !sameExcavator(te, wheelPos)) {
@@ -131,36 +116,34 @@ public class ChunkyExcavators
     
 	private static boolean minesFromChunk(TileEntityExcavator te, Chunk chunk) {
 		BlockPos wheelCenter = te.getBlockPosForPos(EXCAVATOR_WHEEL_CENTER_POS);
+		logger.info("minesFromChunk excavator wheelpos: " + wheelCenter);
     	return wheelCenter.getX() >> 4 == chunk.x && wheelCenter.getZ() >> 4 == chunk.z; //bitshift to always round negative
     }
 	
     private static boolean minesFromChunk(TileEntityBucketWheel te, Chunk chunk) {
     	BlockPos wheelCenter = te.getBlockPosForPos(WHEEL_CENTER_POS);
+		logger.info("minesFromChunk wheel wheelpos: " + wheelCenter);
     	return wheelCenter.getX() >> 4 == chunk.x && wheelCenter.getZ() >> 4 == chunk.z;
 	}
     
     /**
      * Checks if the excavator the tile entity belongs to has its bucketwheel at the specified position.
      */
-    private static boolean sameExcavator(TileEntity te, BlockPos blockPos) {
-        /*
-         * If an excavator has the same bucketwheel position it's the same excavator,
-         * and if it doesn't it's different
-         */
-    	if (te instanceof TileEntityExcavator) return sameExcavator((TileEntityExcavator) te, blockPos);
-    	if (te instanceof TileEntityBucketWheel) return sameExcavator((TileEntityBucketWheel) te, blockPos);
+    private static boolean sameExcavator(TileEntity te, BlockPos wheelPos) {
+    	if (te instanceof TileEntityExcavator) return sameExcavator((TileEntityExcavator) te, wheelPos);
+    	if (te instanceof TileEntityBucketWheel) return sameExcavator((TileEntityBucketWheel) te, wheelPos);
     	return false;
     }
     
-    private static boolean sameExcavator(TileEntityExcavator te, BlockPos blockPos) {
-    	logger.info("excavator " + te.getBlockPosForPos(EXCAVATOR_WHEEL_CENTER_POS) + " clicked block: " + blockPos);
-    	return te.getBlockPosForPos(EXCAVATOR_WHEEL_CENTER_POS).equals(blockPos); //get excavator wheel center and compare positions
+    private static boolean sameExcavator(TileEntityExcavator te, BlockPos wheelPos) {
+    	logger.info("excavator " + te.getBlockPosForPos(EXCAVATOR_WHEEL_CENTER_POS) + " clicked block: " + wheelPos);
+    	return te.getBlockPosForPos(EXCAVATOR_WHEEL_CENTER_POS).equals(wheelPos); //get excavator wheel center and compare positions
     }
 
-    private static boolean sameExcavator(TileEntityBucketWheel te, BlockPos blockPos) {
+    private static boolean sameExcavator(TileEntityBucketWheel te, BlockPos wheelPos) {
     	logger.info(te.getPos());
-    	logger.info("bucket wheel " + te.getBlockPosForPos(WHEEL_CENTER_POS) + " clicked block: " + blockPos);
-    	return te.getBlockPosForPos(WHEEL_CENTER_POS).equals(blockPos);
+    	logger.info("bucket wheel " + te.getBlockPosForPos(WHEEL_CENTER_POS) + " clicked block: " + wheelPos);
+    	return te.getBlockPosForPos(WHEEL_CENTER_POS).equals(wheelPos);
     }
     
     /*
