@@ -21,9 +21,8 @@ public class ChunkyExcavators
 {
 	public static final String MODID = "chunkyexcavators";
     public static final String NAME = "Chunky Excavators";
-    public static final String VERSION = "0.7";
+    public static final String VERSION = "1.0";
     public static final int EXCAVATOR_WHEEL_CENTER_POS = 31;
-	public static final int WHEEL_CENTER_POS = 24;
 	
     private static Logger logger;
 
@@ -40,9 +39,7 @@ public class ChunkyExcavators
     @SubscribeEvent
     public static void excavatorRestrictionCheck(MultiblockFormEvent.Post event) {
     	String multiblockType = event.getMultiblock().getUniqueName();
-    	logger.info("multiblock name is " + multiblockType);
     	if (multiblockType == "IE:Excavator") {
-    		logger.info("excavator code block");
     		/*
     		 * Check for excavators in chunks occupied by adjacent bucketwheels, and cancel formation
     		 * if one is found
@@ -55,7 +52,7 @@ public class ChunkyExcavators
     						    world.getTileEntity(excavatorPos.west())};
     		for (TileEntity te : tes) {
     			if (te instanceof TileEntityBucketWheel) {
-    				BlockPos wheelPos = ((TileEntityBucketWheel) te).getBlockPosForPos(WHEEL_CENTER_POS);
+    				BlockPos wheelPos = ((TileEntityBucketWheel) te).getPos().add(-((TileEntityBucketWheel) te).offset[0], -((TileEntityBucketWheel) te).offset[1], -((TileEntityBucketWheel) te).offset[2]);
     				if (checkForOtherExcavators(wheelPos, world)) {
     					cancelFormation(event);
     					return;
@@ -73,8 +70,8 @@ public class ChunkyExcavators
     }
 
 	private static void cancelFormation(MultiblockFormEvent.Post event) {
-		logger.info("found excavator");
 		event.setCanceled(true);
+		logger.info("canceled excavator formation at " + event.getClickedBlock() + " in dim " + event.getEntityPlayer().getEntityWorld().provider.getDimension());
 		if (!event.getEntityPlayer().getEntityWorld().isRemote) {
 			event.getEntityPlayer().sendMessage(new TextComponentString("There is already an excavator in this chunk!"));
 		}
@@ -82,14 +79,11 @@ public class ChunkyExcavators
     
     /**
      * Checks for other excavators in the chunk, excluding ones with bucket wheels centered on the 
-     * provided BlockPos.
-     * 
-     * TODO: Ignore excavators that are partially in the chunk but mine from a different chunk (currently not working correctly? (maybe))
+     * provided BlockPos. 
      */
     private static boolean checkForOtherExcavators(BlockPos wheelPos, World world) {
     	Chunk chunk = world.getChunkFromBlockCoords(wheelPos);
     	BlockPos chunkCorner = new BlockPos(chunk.x*16, 0, chunk.z*16);
-    	logger.info(chunk.getPrecipitationHeight(chunkCorner));
 		for (int x = 0; x < positionCheckKey.length; x++) {
 			for (int z = 0; z < positionCheckKey[x].length; z++) {
 				if (positionCheckKey[x][z] == 0) continue;
@@ -98,7 +92,6 @@ public class ChunkyExcavators
 				//subtract 1 from starting y value because lowest block is at y = 0
 				for (int y = positionCheckKey[x][z] - 1; y < maxHeight; y += positionCheckKey[x][z]) {
 					TileEntity te = world.getTileEntity(chunkCorner.add(x, y, z));
-					logger.info("checked coordinate " + (chunkCorner.getX() + x) + " " + (chunkCorner.getY() + y) + " " + (chunkCorner.getZ() + z) + " ");
 					if (minesFromChunk(te, chunk) && !sameExcavator(te, wheelPos)) {
 						return true;
 					}
@@ -116,13 +109,11 @@ public class ChunkyExcavators
     
 	private static boolean minesFromChunk(TileEntityExcavator te, Chunk chunk) {
 		BlockPos wheelCenter = te.getBlockPosForPos(EXCAVATOR_WHEEL_CENTER_POS);
-		logger.info("minesFromChunk excavator wheelpos: " + wheelCenter);
     	return wheelCenter.getX() >> 4 == chunk.x && wheelCenter.getZ() >> 4 == chunk.z; //bitshift to always round negative
     }
 	
     private static boolean minesFromChunk(TileEntityBucketWheel te, Chunk chunk) {
     	BlockPos wheelCenter = te.getPos().add(-te.offset[0], -te.offset[1], -te.offset[2]);
-		logger.info("minesFromChunk wheel wheelpos: " + wheelCenter);
     	return wheelCenter.getX() >> 4 == chunk.x && wheelCenter.getZ() >> 4 == chunk.z;
 	}
     
@@ -136,13 +127,10 @@ public class ChunkyExcavators
     }
     
     private static boolean sameExcavator(TileEntityExcavator te, BlockPos wheelPos) {
-    	logger.info("excavator " + te.getBlockPosForPos(EXCAVATOR_WHEEL_CENTER_POS) + " clicked block: " + wheelPos);
     	return te.getBlockPosForPos(EXCAVATOR_WHEEL_CENTER_POS).equals(wheelPos); //get excavator wheel center and compare positions
     }
 
     private static boolean sameExcavator(TileEntityBucketWheel te, BlockPos wheelPos) {
-    	logger.info(te.getPos());
-    	logger.info("bucket wheel " + te.getPos().add(-te.offset[0], -te.offset[1], -te.offset[2]) + " clicked block: " + wheelPos);
     	return te.getPos().add(-te.offset[0], -te.offset[1], -te.offset[2]).equals(wheelPos);
     }
     
